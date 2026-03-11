@@ -37,7 +37,20 @@ export async function startWorkSession(userId: string) {
   return data as WorkSession
 }
 
-export async function endWorkSession(sessionId: string) {
+// ----------------------------------------------------------------------
+// HELPER FOR HEALTH SCORE
+// ----------------------------------------------------------------------
+async function incrementHealthScore(userId: string, points: number) {
+  try {
+    const { data } = await supabase.from('users').select('daily_health_score').eq('id', userId).single();
+    const currentScore = data?.daily_health_score || 0;
+    await supabase.from('users').update({ daily_health_score: currentScore + points }).eq('id', userId);
+  } catch (err) {
+    console.error("Failed to update score", err);
+  }
+}
+
+export async function endWorkSession(sessionId: string, userId: string) {
   const { error } = await supabase
     .from('work_sessions')
     .update({ 
@@ -45,8 +58,11 @@ export async function endWorkSession(sessionId: string) {
       end_time: new Date().toISOString() 
     })
     .eq('id', sessionId)
-
+  
   if (error) throw error
+  
+  // Reward points for completing a session
+  await incrementHealthScore(userId, 15);
 }
 
 export async function getActiveSession(userId: string) {
@@ -84,6 +100,11 @@ export async function logBreak(
     .single()
 
   if (error) throw error
+
+  // Points based on break type
+  const points = breakType === 'water' ? 5 : breakType === 'breathe' ? 10 : 8;
+  await incrementHealthScore(userId, points);
+
   return data as BreakLog
 }
 
@@ -126,6 +147,17 @@ export async function fetchDashboardData(userId: string) {
     .gte('created_at', startOfDay.toISOString())
 
   if (breaksErr) throw breaksErr
+
+  // 2b. Count water breaks only
+  const { count: waterBreaksToday, error: waterErr } = await supabase
+    .from('break_logs')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('break_type', 'water')
+    .eq('is_completed', true)
+    .gte('created_at', startOfDay.toISOString())
+
+  if (waterErr) throw waterErr
 
   // 3. Get completed work sessions for the past 7 days for the chart
   const sevenDaysAgo = new Date();
@@ -191,7 +223,23 @@ export async function fetchDashboardData(userId: string) {
   return {
     profile,
     breaksToday: breaksToday || 0,
+    waterBreaksToday: waterBreaksToday || 0,
     dailyWorkHours,
     weeklyActivity
   }
+}
+
+// ----------------------------------------------------------------------
+// LEADERBOARD
+// ----------------------------------------------------------------------
+
+export async function fetchLeaderboard() {
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, full_name, avatar_url, daily_health_score')
+    .order('daily_health_score', { ascending: false })
+    .limit(50);
+
+  if (error) throw error;
+  return data;
 }

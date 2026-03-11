@@ -7,7 +7,7 @@ import GlassCard from "@/components/GlassCard";
 import HealthRing from "@/components/HealthRing";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "react-router-dom";
-import { Timer, Leaf, Clock, TrendingUp, Sparkles, Activity } from "lucide-react";
+import { Timer, Leaf, Clock, TrendingUp, Sparkles, Activity, Droplets } from "lucide-react";
 import { useAuth } from '@/hooks/use-auth';
 import { fetchDashboardData, startWorkSession, endWorkSession, logBreak, getActiveSession, getRecentBreaks, WorkSession } from '@/lib/api';
 import { generateWellnessSuggestion, WellnessSuggestion } from '@/lib/ai-suggestions';
@@ -43,7 +43,7 @@ const Dashboard = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<any>(null);
-  const [stats, setStats] = useState({ breaksToday: 0, dailyWorkHours: 0 });
+  const [stats, setStats] = useState({ breaksToday: 0, dailyWorkHours: 0, waterBreaksToday: 0 });
   const [weeklyData, setWeeklyData] = useState<{day: string, hours: number}[]>([]);
   const [activeSession, setActiveSession] = useState<WorkSession | null>(null);
   const [aiSuggestion, setAiSuggestion] = useState<WellnessSuggestion | null>(null);
@@ -56,7 +56,8 @@ const Dashboard = () => {
       setProfile(data.profile);
       setStats({
         breaksToday: data.breaksToday,
-        dailyWorkHours: data.dailyWorkHours
+        dailyWorkHours: data.dailyWorkHours,
+        waterBreaksToday: data.waterBreaksToday
       });
       setWeeklyData(data.weeklyActivity);
       const session = await getActiveSession(user.id);
@@ -96,9 +97,9 @@ const Dashboard = () => {
   };
 
   const handleEndSession = async () => {
-    if (!activeSession) return;
+    if (!activeSession || !user) return;
     try {
-      await endWorkSession(activeSession.id);
+      await endWorkSession(activeSession.id, user.id);
       setActiveSession(null);
       toast.success('Focus session completed. Great work!');
       loadDashboard();
@@ -281,6 +282,47 @@ const Dashboard = () => {
                 🧘 Stretch
               </button>
             </div>
+          </GlassCard>
+
+          {/* Hydration Tracker */}
+          <GlassCard delay={0.75} className="sm:col-span-2 overflow-hidden relative">
+            <div className="absolute right-0 top-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+            <div className="flex items-center justify-between mb-4">
+               <div>
+                  <h3 className="font-display font-semibold flex items-center gap-2 text-foreground">
+                    <Droplets size={18} className="text-blue-500" /> Hydration Tracker
+                  </h3>
+                  <p className="text-sm text-muted-foreground mt-1">Goal: 8 glasses a day</p>
+               </div>
+               <div className="text-2xl font-display font-bold text-blue-600">
+                 {stats.waterBreaksToday} <span className="text-sm font-normal text-muted-foreground">/ 8</span>
+               </div>
+            </div>
+            
+            <div className="flex justify-between items-end h-16 mt-2 relative z-10">
+               {Array.from({ length: 8 }).map((_, i) => {
+                 const isFilled = i < stats.waterBreaksToday;
+                 return (
+                   <motion.div 
+                     key={i} 
+                     initial={{ scale: 0.8, opacity: 0 }}
+                     animate={{ scale: 1, opacity: 1 }}
+                     transition={{ delay: 0.8 + i * 0.05 }}
+                     onClick={() => handleLogBreak("water")}
+                     className={`cursor-pointer group flex flex-col items-center justify-end w-8 h-full rounded-t-lg transition-all duration-300 ${isFilled ? 'bg-blue-100 hover:bg-blue-200' : 'bg-slate-100 hover:bg-slate-200 border border-slate-200'}`}
+                   >
+                     {isFilled && (
+                       <motion.div 
+                         initial={{ height: 0 }} 
+                         animate={{ height: "100%" }} 
+                         className="w-full bg-blue-500 rounded-t-lg rounded-b-sm transition-all shadow-[0_0_15px_rgba(59,130,246,0.5)]"
+                       />
+                     )}
+                   </motion.div>
+                 );
+               })}
+            </div>
+            <p className="text-xs text-center text-muted-foreground mt-4">Click a glass to log water</p>
           </GlassCard>
         </div>
 

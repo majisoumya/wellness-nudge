@@ -64,9 +64,9 @@ ALTER TABLE public.work_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.break_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
--- Users can read and update their own profile
-CREATE POLICY "Users can view their own profile." 
-    ON public.users FOR SELECT USING (auth.uid() = id);
+-- Users can read profiles for the leaderboard
+CREATE POLICY "Users can view profiles." 
+    ON public.users FOR SELECT USING (true);
 CREATE POLICY "Users can update their own profile." 
     ON public.users FOR UPDATE USING (auth.uid() = id);
 

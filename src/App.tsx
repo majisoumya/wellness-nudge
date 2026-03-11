@@ -12,6 +12,8 @@ import Dashboard from "./pages/Dashboard";
 import TimerPage from "./pages/TimerPage";
 import WellnessPage from "./pages/WellnessPage";
 import HistoryPage from "./pages/HistoryPage";
+import PostureReminder from "./pages/PostureReminder";
+import Leaderboard from "./pages/Leaderboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -49,6 +51,8 @@ const App = () => (
               <Route path="/timer" element={<ProtectedRoute><TimerPage /></ProtectedRoute>} />
               <Route path="/wellness" element={<ProtectedRoute><WellnessPage /></ProtectedRoute>} />
               <Route path="/history" element={<ProtectedRoute><HistoryPage /></ProtectedRoute>} />
+              <Route path="/posture" element={<ProtectedRoute><PostureReminder /></ProtectedRoute>} />
+              <Route path="/leaderboard" element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </AppLayout>
