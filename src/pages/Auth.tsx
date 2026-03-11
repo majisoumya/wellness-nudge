@@ -61,13 +61,33 @@ export default function AuthPage() {
     setGoogleLoading(true)
     setErrorMsg('')
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin + '/dashboard'
+      const currentOrigin = window.location.origin
+      const isEmbedded =
+        !currentOrigin.includes('lovable.app') &&
+        !currentOrigin.includes('lovableproject.com')
+
+      if (isEmbedded) {
+        // In iframe/custom domain: get URL and redirect manually
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: currentOrigin + '/dashboard',
+            skipBrowserRedirect: true,
+          },
+        })
+        if (error) throw error
+        if (data?.url) {
+          window.location.href = data.url
         }
-      })
-      if (error) throw error
+      } else {
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: currentOrigin + '/dashboard',
+          },
+        })
+        if (error) throw error
+      }
     } catch (error: any) {
       setErrorMsg(error.message || 'Failed to sign in with Google')
       setGoogleLoading(false)
