@@ -1,7 +1,6 @@
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import FloatingOrbs from "@/components/FloatingOrbs";
-import Orb3D from "@/components/Orb3D";
 import GlassCard from "@/components/GlassCard";
 import { Timer, Heart, BarChart3, Bell } from "lucide-react";
 
@@ -13,7 +12,15 @@ const features = [
 ];
 
 const Landing = () => (
-  <div className="gradient-radial-bg relative overflow-hidden">
+  <div className="relative min-h-screen overflow-hidden">
+    {/* Centered Full-Page Spline Background with global cursor tracking */}
+    <div className="fixed inset-0 w-full h-full z-[-1] pointer-events-none">
+      <div className="w-full h-full pointer-events-auto">
+        {/* @ts-ignore */}
+        <spline-viewer events-target="global" loading-anim-type="spinner-small-light" url="https://prod.spline.design/81cToKZs2VBbJXWf/scene.splinecode"></spline-viewer>
+      </div>
+    </div>
+    
     <FloatingOrbs />
 
     {/* Nav */}
@@ -59,13 +66,8 @@ const Landing = () => (
           </div>
         </motion.div>
 
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 1, delay: 0.5 }}
-        >
-          <Orb3D />
-        </motion.div>
+        {/* Right column kept empty to preserve layout balance */}
+        <div className="hidden md:block"></div>
       </div>
     </section>
 
