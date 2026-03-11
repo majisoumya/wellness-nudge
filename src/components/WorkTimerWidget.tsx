@@ -128,7 +128,7 @@ const WorkTimerWidget = ({ workMinutes = 25, breakMinutes = 5 }: WorkTimerProps)
 
     if (dbSession) {
       try {
-        await endWorkSession(dbSession.id);
+        await endWorkSession(dbSession.id, user?.id || '');
         setDbSession(null);
         toast.success("Work session ended and saved.");
       } catch (e: any) {
