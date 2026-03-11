@@ -1,10 +1,17 @@
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import FloatingOrbs from "@/components/FloatingOrbs";
 import AppNav from "@/components/AppNav";
 import GlassCard from "@/components/GlassCard";
 import HealthRing from "@/components/HealthRing";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "react-router-dom";
-import { Timer, Leaf, Clock, TrendingUp } from "lucide-react";
+import { Timer, Leaf, Clock, TrendingUp, Sparkles, Activity } from "lucide-react";
+import { useAuth } from '@/hooks/use-auth';
+import { fetchDashboardData, startWorkSession, endWorkSession, logBreak, getActiveSession, getRecentBreaks, WorkSession } from '@/lib/api';
+import { generateWellnessSuggestion, WellnessSuggestion } from '@/lib/ai-suggestions';
+import { toast } from "sonner";
 
 const tips = [
   "Stretch your shoulders and neck",
@@ -12,69 +19,299 @@ const tips = [
   "Take three deep breaths",
 ];
 
-const Dashboard = () => (
-  <div className="gradient-radial-bg relative">
-    <FloatingOrbs />
-    <div className="relative z-10 container mx-auto py-6">
-      <AppNav />
-
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.2 }}
-        className="mb-6"
-      >
-        <h1 className="font-display text-2xl font-bold text-foreground">Good afternoon</h1>
-        <p className="text-sm text-muted-foreground mt-1">Here's a quiet look at your day.</p>
-      </motion.div>
-
-      <div className="grid md:grid-cols-3 gap-6 mb-6">
-        {/* Health Ring */}
-        <GlassCard delay={0.2} className="flex flex-col items-center justify-center py-8 md:col-span-1">
-          <HealthRing segments={5} filled={3} size={140} />
-          <p className="text-xs text-muted-foreground mt-4">Your daily pauses</p>
+const DashboardSkeleton = () => (
+  <div className="grid md:grid-cols-3 gap-6 mb-6">
+    <GlassCard className="flex flex-col items-center justify-center py-8 md:col-span-1">
+      <Skeleton className="w-[140px] h-[140px] rounded-full" />
+      <Skeleton className="w-24 h-4 mt-4" />
+    </GlassCard>
+    <div className="md:col-span-2 grid grid-cols-2 gap-4">
+      {Array(4).fill(0).map((_, i) => (
+        <GlassCard key={i}>
+          <div className="flex items-center gap-3 mb-2">
+            <Skeleton className="w-5 h-5 rounded-full" />
+            <Skeleton className="w-20 h-3" />
+          </div>
+          <Skeleton className="w-16 h-6 mt-2" />
         </GlassCard>
-
-        {/* Quick stats */}
-        <div className="md:col-span-2 grid grid-cols-2 gap-4">
-          {[
-            { icon: Timer, label: "Focus time", value: "1h 42m", color: "text-primary" },
-            { icon: Clock, label: "Breaks taken", value: "3", color: "text-primary" },
-            { icon: TrendingUp, label: "Streak", value: "4 days", color: "text-primary" },
-            { icon: Leaf, label: "Wellness tip", value: tips[0], color: "text-muted-foreground", small: true },
-          ].map((stat, i) => (
-            <GlassCard key={stat.label} delay={0.3 + i * 0.1}>
-              <div className="flex items-center gap-3 mb-2">
-                <stat.icon size={18} className={stat.color} />
-                <span className="text-xs text-muted-foreground font-body">{stat.label}</span>
-              </div>
-              <p className={`font-display font-semibold text-foreground ${stat.small ? "text-xs font-normal" : "text-xl"}`}>
-                {stat.value}
-              </p>
-            </GlassCard>
-          ))}
-        </div>
-      </div>
-
-      {/* Quick actions */}
-      <div className="grid sm:grid-cols-2 gap-4">
-        <GlassCard delay={0.6}>
-          <h3 className="font-display font-semibold text-foreground mb-2">Start a focus session</h3>
-          <p className="text-sm text-muted-foreground mb-4">25 minutes of deep work, then a gentle pause.</p>
-          <Link to="/timer" className="btn-primary text-sm inline-block">
-            Begin session
-          </Link>
-        </GlassCard>
-        <GlassCard delay={0.7}>
-          <h3 className="font-display font-semibold text-foreground mb-2">Wellness suggestions</h3>
-          <p className="text-sm text-muted-foreground mb-4">Curated micro-activities for your next break.</p>
-          <Link to="/wellness" className="btn-ghost text-sm inline-block">
-            Explore
-          </Link>
-        </GlassCard>
-      </div>
+      ))}
     </div>
   </div>
 );
 
+const Dashboard = () => {
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<any>(null);
+  const [stats, setStats] = useState({ breaksToday: 0, dailyWorkHours: 0 });
+  const [weeklyData, setWeeklyData] = useState<{day: string, hours: number}[]>([]);
+  const [activeSession, setActiveSession] = useState<WorkSession | null>(null);
+  const [aiSuggestion, setAiSuggestion] = useState<WellnessSuggestion | null>(null);
+
+  const loadDashboard = async () => {
+    if (!user) return;
+    try {
+      setLoading(true);
+      const data = await fetchDashboardData(user.id);
+      setProfile(data.profile);
+      setStats({
+        breaksToday: data.breaksToday,
+        dailyWorkHours: data.dailyWorkHours
+      });
+      setWeeklyData(data.weeklyActivity);
+      const session = await getActiveSession(user.id);
+      setActiveSession(session);
+
+      // Generate AI Suggestion based on active session and history
+      if (session) {
+        const recentBreaks = await getRecentBreaks(user.id, 4); // breaks in last 4 hours
+        const elapsedMinutes = (Date.now() - new Date(session.start_time).getTime()) / (1000 * 60);
+        const suggestion = generateWellnessSuggestion(elapsedMinutes, recentBreaks);
+        setAiSuggestion(suggestion);
+      } else {
+        setAiSuggestion(null);
+      }
+    } catch (error: any) {
+      console.error('Error loading dashboard:', error.message);
+      toast.error('Failed to load your wellness data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDashboard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  const handleStartSession = async () => {
+    if (!user) return;
+    try {
+      const session = await startWorkSession(user.id);
+      setActiveSession(session);
+      toast.success('Focus session started!');
+    } catch (e: any) {
+      toast.error("Failed to start session: " + e.message);
+    }
+  };
+
+  const handleEndSession = async () => {
+    if (!activeSession) return;
+    try {
+      await endWorkSession(activeSession.id);
+      setActiveSession(null);
+      toast.success('Focus session completed. Great work!');
+      loadDashboard();
+    } catch (e: any) {
+      toast.error("Failed to end session: " + e.message);
+    }
+  };
+
+  const handleLogBreak = async (type: 'water' | 'stretch' | 'eye_rest' | 'breathe') => {
+    if (!user || !activeSession) {
+      toast.info('Start a focus session first to log breaks!');
+      return;
+    }
+    try {
+      await logBreak(user.id, activeSession.id, type);
+      toast.success('Break logged! Well done.');
+      loadDashboard();
+    } catch (e: any) {
+      toast.error("Failed to log break: " + e.message);
+    }
+  };
+
+  const handleShowAiPopup = () => {
+    if (aiSuggestion) {
+      toast("AI Wellness Suggestion JSON", {
+        description: (
+          <pre className="mt-2 w-[300px] rounded-md bg-slate-950 p-4 text-xs text-white overflow-hidden text-wrap break-words">
+            {JSON.stringify(aiSuggestion, null, 2)}
+          </pre>
+        ),
+        duration: 10000,
+        icon: <Sparkles className="text-yellow-500" />,
+      });
+    } else {
+      toast.info("Start a session and wait a few minutes for a personalized AI suggestion.");
+    }
+  };
+
+  return (
+    <div className="gradient-radial-bg relative">
+      <FloatingOrbs />
+      <div className="relative z-10 container mx-auto py-6">
+        <AppNav />
+
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2 }}
+          className="mb-6"
+        >
+          <h1 className="font-display text-2xl font-bold text-foreground">
+            {profile?.full_name ? `Good afternoon, ${profile.full_name}` : "Good afternoon"}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">Here's a quiet look at your day.</p>
+        </motion.div>
+
+        {loading ? (
+          <DashboardSkeleton />
+        ) : (
+          <div className="grid md:grid-cols-3 gap-6 mb-6">
+            <GlassCard delay={0.2} className="flex flex-col items-center justify-center py-8 md:col-span-1">
+              <HealthRing segments={5} filled={Math.min(5, Math.ceil((profile?.daily_health_score || 0) / 20))} size={140} />
+              <p className="text-xs text-muted-foreground mt-4">Health Score: {profile?.daily_health_score || 0}</p>
+            </GlassCard>
+
+            <div className="md:col-span-2 grid grid-cols-2 gap-4">
+              {[
+                { icon: Timer, label: "Hours today", value: `${stats.dailyWorkHours}h`, color: "text-primary" },
+                { icon: Clock, label: "Breaks taken", value: `${stats.breaksToday}`, color: "text-primary" },
+                { icon: TrendingUp, label: "Status", value: activeSession ? "Working" : "Resting", color: activeSession ? "text-green-500" : "text-muted-foreground" },
+                { icon: Leaf, label: "Wellness tip", value: tips[0], color: "text-muted-foreground", small: true },
+              ].map((stat, i) => (
+                <GlassCard key={stat.label} delay={0.3 + i * 0.1}>
+                  <div className="flex items-center gap-3 mb-2">
+                    <stat.icon size={18} className={stat.color} />
+                    <span className="text-xs text-muted-foreground font-body">{stat.label}</span>
+                  </div>
+                  <p className={`font-display font-semibold text-foreground ${stat.small ? "text-xs font-normal" : "text-xl"}`}>
+                    {stat.value}
+                  </p>
+                </GlassCard>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Weekly Activity Chart */}
+        {!loading && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="mb-6">
+            <GlassCard>
+              <h3 className="font-display font-semibold text-foreground mb-4">Weekly Activity</h3>
+              <div className="h-[200px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={weeklyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <XAxis 
+                      dataKey="day" 
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={{ fontSize: 12, fill: '#818cf8', fontWeight: 500 }} 
+                      dy={10}
+                    />
+                    <YAxis 
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={{ fontSize: 12, fill: '#818cf8' }}
+                    />
+                    <Tooltip 
+                      cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }}
+                      contentStyle={{ 
+                        borderRadius: '12px', 
+                        border: '1px solid rgba(255,255,255,0.2)', 
+                        background: 'rgba(255, 255, 255, 0.7)',
+                        backdropFilter: 'blur(12px)',
+                        boxShadow: '0 10px 25px rgba(79, 70, 229, 0.15)',
+                        color: '#1e1b4b',
+                        fontWeight: 600
+                      }}
+                      itemStyle={{ color: '#4f46e5' }}
+                      formatter={(value: number) => [`${value} hrs`, 'Focused Time']}
+                    />
+                    <Bar 
+                      dataKey="hours" 
+                      radius={[6, 6, 6, 6]} 
+                      animationDuration={1500} 
+                      animationEasing="ease-out"
+                    >
+                      {weeklyData.map((entry, index) => (
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={entry.hours > 0 ? "url(#barGradient)" : '#e0e7ff'} 
+                        />
+                      ))}
+                    </Bar>
+                    <defs>
+                      <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#818cf8" />
+                        <stop offset="100%" stopColor="#4f46e5" />
+                      </linearGradient>
+                    </defs>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </GlassCard>
+          </motion.div>
+        )}
+
+        {/* Quick actions integrated with sessions */}
+        <div className="grid sm:grid-cols-2 gap-4">
+          <GlassCard delay={0.6}>
+            <h3 className="font-display font-semibold text-foreground mb-2">
+              {activeSession ? "Active Session" : "Start a focus session"}
+            </h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              {activeSession 
+                ? "You're currently in a deep work session. Remember to take micro-breaks!" 
+                : "25 minutes of deep work, then a gentle pause."}
+            </p>
+            {!activeSession ? (
+              <button onClick={handleStartSession} className="btn-primary text-sm inline-block">
+                Begin session
+              </button>
+            ) : (
+              <button onClick={handleEndSession} className="px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition text-sm font-medium">
+                End Session
+              </button>
+            )}
+          </GlassCard>
+
+          <GlassCard delay={0.7}>
+            <h3 className="font-display font-semibold text-foreground mb-2">Quick Log Break</h3>
+            <p className="text-sm text-muted-foreground mb-4">Log a micro-activity instantly.</p>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => handleLogBreak('water')} className="text-xs px-3 py-1.5 border rounded-full hover:bg-black/5 transition">
+                💧 Water
+              </button>
+              <button onClick={() => handleLogBreak('eye_rest')} className="text-xs px-3 py-1.5 border rounded-full hover:bg-black/5 transition">
+                👀 20-20-20
+              </button>
+              <button onClick={() => handleLogBreak('stretch')} className="text-xs px-3 py-1.5 border rounded-full hover:bg-black/5 transition">
+                🧘 Stretch
+              </button>
+            </div>
+          </GlassCard>
+        </div>
+
+        {/* AI Suggestion Card */}
+        {activeSession && aiSuggestion && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }} className="mt-4">
+            <GlassCard className="border border-indigo-100/50 bg-indigo-50/30">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Sparkles className="text-indigo-600" size={18} />
+                    <h3 className="font-display font-semibold text-indigo-900">AI Wellness Nudge</h3>
+                  </div>
+                  <p className="text-sm font-medium text-indigo-800">{aiSuggestion.title}</p>
+                  <p className="text-sm text-indigo-600/80 mb-2">{aiSuggestion.description}</p>
+                  <p className="text-xs text-indigo-500 italic flex items-center gap-1">
+                    <Activity size={12}/> Reason: {aiSuggestion.reason}
+                  </p>
+                </div>
+                <button 
+                  onClick={handleShowAiPopup}
+                  className="px-3 py-1.5 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition rounded-md text-xs font-medium whitespace-nowrap"
+                >
+                  View JSON Popup
+                </button>
+              </div>
+            </GlassCard>
+          </motion.div>
+        )}
+      </div>
+    </div>
+  );
+};
 export default Dashboard;

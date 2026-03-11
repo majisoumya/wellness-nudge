@@ -1,6 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import GlassCard from "./GlassCard";
+import { useAuth } from "@/hooks/use-auth";
+import { startWorkSession, endWorkSession, logBreak, WorkSession } from "@/lib/api";
+import { toast } from "sonner";
 
 const BreathCircle = () => (
   <motion.div className="flex items-center justify-center h-64">
@@ -36,11 +39,18 @@ interface WorkTimerProps {
   breakMinutes?: number;
 }
 
-const WorkTimer = ({ workMinutes = 25, breakMinutes = 5 }: WorkTimerProps) => {
+const WorkTimerWidget = ({ workMinutes = 25, breakMinutes = 5 }: WorkTimerProps) => {
+  const { user } = useAuth();
   const [isRunning, setIsRunning] = useState(false);
   const [isBreak, setIsBreak] = useState(false);
   const [timeLeft, setTimeLeft] = useState(workMinutes * 60);
   const [sessionsCompleted, setSessionsCompleted] = useState(0);
+
+  // Track the actual Supabase session
+  const [dbSession, setDbSession] = useState<WorkSession | null>(null);
+  
+  // Track elapsed time carefully for the 25-minute trigger
+  const elapsedRef = useRef(0);
 
   const totalTime = isBreak ? breakMinutes * 60 : workMinutes * 60;
   const progress = 1 - timeLeft / totalTime;
@@ -50,27 +60,83 @@ const WorkTimer = ({ workMinutes = 25, breakMinutes = 5 }: WorkTimerProps) => {
     if (!isRunning || timeLeft <= 0) {
       if (timeLeft <= 0 && isRunning) {
         if (!isBreak) {
+          // Transition from Work to Break
           setIsBreak(true);
           setTimeLeft(breakMinutes * 60);
           setSessionsCompleted((p) => p + 1);
+          elapsedRef.current = 0; // reset elapsed
+
+          // The global useWellnessTracker hook will handle the actual alert notification
+          // but we still do the UI transition locally here for the Break Screen.
+
         } else {
+          // Transition from Break to Work (End of break)
           setIsBreak(false);
           setTimeLeft(workMinutes * 60);
           setIsRunning(false);
+          
+          // If we want to automatically close the supabase session after the break, we could do it here,
+          // but usually users want to manually end their whole block of working.
+          if (user && dbSession) {
+             // Let's log that they successfully finished a break.
+             logBreak(user.id, dbSession.id, 'other', breakMinutes * 60).catch(console.error);
+             toast.success("Break completed. Ready to focus again?");
+          }
         }
       }
       return;
     }
-    const interval = setInterval(() => setTimeLeft((t) => t - 1), 1000);
-    return () => clearInterval(interval);
-  }, [isRunning, timeLeft, isBreak, breakMinutes, workMinutes]);
+    
+    const interval = setInterval(() => {
+      setTimeLeft((t) => t - 1);
+      if (!isBreak) elapsedRef.current += 1;
+    }, 1000);
 
-  const handleToggle = useCallback(() => setIsRunning((r) => !r), []);
-  const handleReset = useCallback(() => {
+    return () => clearInterval(interval);
+  }, [isRunning, timeLeft, isBreak, breakMinutes, workMinutes, dbSession, user]);
+
+  const handleToggle = async () => {
+    if (!user) {
+      toast.error("You must be logged in to track sessions.");
+      return;
+    }
+
+    // Start
+    if (!isRunning) {
+      setIsRunning(true);
+      if (!isBreak && !dbSession) {
+         try {
+           const newSession = await startWorkSession(user.id);
+           setDbSession(newSession);
+           toast.success("Work session started!");
+         } catch(e: any) {
+           console.error(e);
+           toast.error("Failed to sync session to database.");
+         }
+      }
+    } else {
+      // Pause
+      setIsRunning(false);
+    }
+  };
+
+  const handleEndSession = async () => {
     setIsRunning(false);
     setIsBreak(false);
     setTimeLeft(workMinutes * 60);
-  }, [workMinutes]);
+    elapsedRef.current = 0;
+
+    if (dbSession) {
+      try {
+        await endWorkSession(dbSession.id);
+        setDbSession(null);
+        toast.success("Work session ended and saved.");
+      } catch (e: any) {
+        console.error(e);
+        toast.error("Failed to end session in database.");
+      }
+    }
+  };
 
   return (
     <GlassCard className="max-w-md mx-auto text-center" hover={false}>
@@ -85,12 +151,20 @@ const WorkTimer = ({ workMinutes = 25, breakMinutes = 5 }: WorkTimerProps) => {
           >
             <h3 className="font-display text-lg font-medium mb-2 text-foreground">Time to breathe</h3>
             <p className="text-sm mb-4" style={{ color: "var(--text-subtle)" }}>
-              Follow the circle. No numbers needed.
+              Follow the circle. Stretch your neck and rest your eyes.
             </p>
             <BreathCircle />
-            <p className="text-xs mt-2" style={{ color: "var(--text-subtle)" }}>
-              Break ends in {formatTime(timeLeft)}
+            <p className="text-xs mt-2 font-display text-3xl font-light text-foreground tracking-wider mb-6">
+              {formatTime(timeLeft)}
             </p>
+            <div className="flex gap-3 justify-center">
+              <button onClick={() => setIsRunning(!isRunning)} className="btn-primary px-8">
+                {isRunning ? "Pause Break" : "Resume Break"}
+              </button>
+              <button onClick={handleEndSession} className="btn-ghost text-red-600 hover:bg-red-50">
+                End Session
+              </button>
+            </div>
           </motion.div>
         ) : (
           <motion.div
@@ -135,11 +209,11 @@ const WorkTimer = ({ workMinutes = 25, breakMinutes = 5 }: WorkTimerProps) => {
 
             <div className="flex gap-3 justify-center">
               <button onClick={handleToggle} className="btn-primary px-8">
-                {isRunning ? "Pause" : "Start Session"}
+                {isRunning ? "Pause" : (dbSession ? "Resume" : "Start")}
               </button>
-              {isRunning && (
-                <button onClick={handleReset} className="btn-ghost">
-                  Reset
+              {dbSession && (
+                <button onClick={handleEndSession} className="btn-ghost text-red-600 hover:bg-red-50">
+                  End
                 </button>
               )}
             </div>
@@ -153,4 +227,4 @@ const WorkTimer = ({ workMinutes = 25, breakMinutes = 5 }: WorkTimerProps) => {
   );
 };
 
-export default WorkTimer;
+export default WorkTimerWidget;
