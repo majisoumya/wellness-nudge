@@ -1,5 +1,8 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import { useAuth } from "@/hooks/use-auth";
+import { useTheme } from "@/components/ThemeProvider";
+import { Moon, Sun } from "lucide-react";
 
 const navItems = [
   { path: "/dashboard", label: "Dashboard" },
@@ -12,6 +15,14 @@ const navItems = [
 
 const AppNav = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { signOut } = useAuth();
+  const { theme, setTheme } = useTheme();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/");
+  };
 
   return (
     <motion.nav
@@ -40,9 +51,21 @@ const AppNav = () => {
           );
         })}
       </div>
-      <Link to="/" className="text-xs font-body text-muted-foreground hover:text-foreground transition-colors">
-        Sign out
-      </Link>
+      <div className="flex items-center gap-4">
+        <button
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          className="text-muted-foreground hover:text-foreground transition-colors p-1"
+          title="Toggle theme"
+        >
+          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+        </button>
+        <button
+          onClick={handleSignOut}
+          className="text-xs font-body text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+        >
+          Sign out
+        </button>
+      </div>
     </motion.nav>
   );
 };

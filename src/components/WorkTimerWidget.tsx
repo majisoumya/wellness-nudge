@@ -150,7 +150,7 @@ const WorkTimerWidget = ({ workMinutes = 25, breakMinutes = 5 }: WorkTimerProps)
             transition={{ duration: 0.8 }}
           >
             <h3 className="font-display text-lg font-medium mb-2 text-foreground">Time to breathe</h3>
-            <p className="text-sm mb-4" style={{ color: "var(--text-subtle)" }}>
+            <p className="text-sm mb-4 text-muted-foreground">
               Follow the circle. Stretch your neck and rest your eyes.
             </p>
             <BreathCircle />
@@ -217,7 +217,7 @@ const WorkTimerWidget = ({ workMinutes = 25, breakMinutes = 5 }: WorkTimerProps)
                 </button>
               )}
             </div>
-            <p className="text-xs mt-4" style={{ color: "var(--text-subtle)" }}>
+            <p className="text-xs mt-4 text-muted-foreground">
               Sessions completed today: {sessionsCompleted}
             </p>
           </motion.div>

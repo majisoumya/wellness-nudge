@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ThemeProvider } from "@/components/ThemeProvider";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
 import { useNotifications } from "@/hooks/use-notifications";
 import { useWellnessTracker } from "@/hooks/use-wellness-tracker";
@@ -36,29 +37,31 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <AppLayout>
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/login" element={<AuthPage />} />
-              
-              {/* Protected Routes */}
-              <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-              <Route path="/timer" element={<ProtectedRoute><TimerPage /></ProtectedRoute>} />
-              <Route path="/wellness" element={<ProtectedRoute><WellnessPage /></ProtectedRoute>} />
-              <Route path="/history" element={<ProtectedRoute><HistoryPage /></ProtectedRoute>} />
-              <Route path="/posture" element={<ProtectedRoute><PostureReminder /></ProtectedRoute>} />
-              <Route path="/leaderboard" element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </AppLayout>
-        </BrowserRouter>
-      </TooltipProvider>
-    </AuthProvider>
+    <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
+      <AuthProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <AppLayout>
+              <Routes>
+                <Route path="/" element={<Index />} />
+                <Route path="/login" element={<AuthPage />} />
+                
+                {/* Protected Routes */}
+                <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                <Route path="/timer" element={<ProtectedRoute><TimerPage /></ProtectedRoute>} />
+                <Route path="/wellness" element={<ProtectedRoute><WellnessPage /></ProtectedRoute>} />
+                <Route path="/history" element={<ProtectedRoute><HistoryPage /></ProtectedRoute>} />
+                <Route path="/posture" element={<ProtectedRoute><PostureReminder /></ProtectedRoute>} />
+                <Route path="/leaderboard" element={<ProtectedRoute><Leaderboard /></ProtectedRoute>} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </AppLayout>
+          </BrowserRouter>
+        </TooltipProvider>
+      </AuthProvider>
+    </ThemeProvider>
   </QueryClientProvider>
 );
 

@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '@/hooks/use-auth'
 
 export default function AuthPage() {
   const navigate = useNavigate()
+  const { session } = useAuth()
   
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -12,6 +14,13 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const [successMsg, setSuccessMsg] = useState('')
+
+  // Automatically redirect when session is established, fixes race condition with ProtectedRoute
+  useEffect(() => {
+    if (session) {
+      navigate('/dashboard', { replace: true })
+    }
+  }, [session, navigate])
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -28,7 +37,7 @@ export default function AuthPage() {
         })
         if (error) throw error
         setSuccessMsg('Logged in successfully!')
-        navigate('/dashboard') // Redirect on success
+        // Relies on useEffect to redirect once context updates
       } else {
         // Handle Signup
         const { error, data } = await supabase.auth.signUp({
@@ -45,9 +54,7 @@ export default function AuthPage() {
         
         // If email confirmation isn't required by the Supabase project settings,
         // they might be immediately logged in.
-        if (data.session) {
-          navigate('/dashboard')
-        } else {
+        if (!data.session) {
           setSuccessMsg('Check your email for the confirmation link!')
         }
       }

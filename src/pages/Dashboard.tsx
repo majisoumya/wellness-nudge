@@ -59,6 +59,7 @@ const Dashboard = () => {
   const detachedRef = useRef<number>(0); // Timestamp when face was last seen
   const alertPlayedRef = useRef<boolean>(false);
   const checkIntervalRef = useRef<any>(null);
+  const [faceStatus, setFaceStatus] = useState("Initializing Camera...");
 
   // Load MoveNet model once
   useEffect(() => {
@@ -86,10 +87,16 @@ const Dashboard = () => {
     alertPlayedRef.current = false;
 
     const checkFace = async () => {
-      if (!webcamRef.current || !webcamRef.current.video) return;
+      if (!webcamRef.current || !webcamRef.current.video) {
+        setFaceStatus("Camera not found");
+        return;
+      }
       const video = webcamRef.current.video;
       
-      if (video.readyState !== 4) return;
+      if (video.readyState !== 4) {
+        setFaceStatus("Camera loading...");
+        return;
+      }
 
       try {
         const poses = await model.estimatePoses(video);
@@ -109,15 +116,20 @@ const Dashboard = () => {
         if (faceDetected) {
           detachedRef.current = Date.now(); // Reset the detach timer
           alertPlayedRef.current = false;
+          setFaceStatus("Face Detected (Focused)");
         } else {
+          const elapsed = Date.now() - detachedRef.current;
+          setFaceStatus(`No Face Detected (${Math.floor(elapsed/1000)}s)`);
+
           // Check if detached for more than 15 seconds
-          if (Date.now() - detachedRef.current > 15000 && !alertPlayedRef.current) {
+          if (elapsed > 15000 && !alertPlayedRef.current) {
              alertPlayedRef.current = true;
              playVoiceAlert("Focus reminder. I cannot see you at the screen. Please return to your focus session.");
              toast.warning("Focus Interrupted", { description: "We couldn't detect your face. Don't lose your focus flow!" });
           }
         }
       } catch (e) {
+        setFaceStatus("AI Error");
         console.warn("Background detection error", e);
       }
     };
@@ -224,15 +236,28 @@ const Dashboard = () => {
       <div className="relative z-10 container mx-auto py-6">
         <AppNav />
 
-        {/* Hidden internal camera used only during focus sessions for detachment tracking */}
+        {/* Small visible PIP camera during focus sessions */}
         {activeSession && (
-          <div className="absolute top-0 left-0 w-10 h-10 opacity-0 pointer-events-none overflow-hidden -z-10">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="fixed bottom-6 right-6 w-32 bg-slate-900 border border-slate-700 shadow-2xl rounded-lg overflow-hidden z-50 flex flex-col"
+          >
+            <div className="bg-slate-800 px-2 py-1 text-[10px] font-bold text-slate-300 uppercase tracking-wider flex justify-between items-center">
+               <span>Focus Cam</span>
+               <div className={`w-2 h-2 rounded-full ${faceStatus.includes('Face Detected') ? 'bg-green-500' : 'bg-amber-500 animate-pulse'}`}></div>
+            </div>
             <Webcam
                ref={webcamRef}
                audio={false}
+               className="w-full h-auto object-cover"
                videoConstraints={{ facingMode: "user", width: 160, height: 120 }} // ultra low res
+               mirrored={true}
             />
-          </div>
+            <div className="bg-slate-900 px-2 py-1.5 text-[10px] text-slate-400 text-center truncate">
+               {faceStatus}
+            </div>
+          </motion.div>
         )}
 
         <motion.div
@@ -385,7 +410,7 @@ const Dashboard = () => {
                   </h3>
                   <p className="text-sm text-muted-foreground mt-1">Goal: 8 glasses a day</p>
                </div>
-               <div className="text-2xl font-display font-bold text-blue-600">
+               <div className="text-2xl font-display font-bold text-blue-600 dark:text-blue-400">
                  {stats.waterBreaksToday} <span className="text-sm font-normal text-muted-foreground">/ 8</span>
                </div>
             </div>
@@ -420,22 +445,22 @@ const Dashboard = () => {
         {/* AI Suggestion Card */}
         {activeSession && aiSuggestion && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }} className="mt-4">
-            <GlassCard className="border border-indigo-100/50 bg-indigo-50/30">
+            <GlassCard className="border border-indigo-100/50 dark:border-indigo-500/20 bg-indigo-50/30 dark:bg-indigo-950/30">
               <div className="flex items-start justify-between">
                 <div>
                   <div className="flex items-center gap-2 mb-2">
-                    <Sparkles className="text-indigo-600" size={18} />
-                    <h3 className="font-display font-semibold text-indigo-900">AI Wellness Nudge</h3>
+                    <Sparkles className="text-indigo-600 dark:text-indigo-400" size={18} />
+                    <h3 className="font-display font-semibold text-indigo-900 dark:text-indigo-100">AI Wellness Nudge</h3>
                   </div>
-                  <p className="text-sm font-medium text-indigo-800">{aiSuggestion.title}</p>
-                  <p className="text-sm text-indigo-600/80 mb-2">{aiSuggestion.description}</p>
-                  <p className="text-xs text-indigo-500 italic flex items-center gap-1">
+                  <p className="text-sm font-medium text-indigo-800 dark:text-indigo-300">{aiSuggestion.title}</p>
+                  <p className="text-sm text-indigo-600/80 dark:text-indigo-400/80 mb-2">{aiSuggestion.description}</p>
+                  <p className="text-xs text-indigo-500 dark:text-indigo-400 italic flex items-center gap-1">
                     <Activity size={12}/> Reason: {aiSuggestion.reason}
                   </p>
                 </div>
                 <button 
                   onClick={handleShowAiPopup}
-                  className="px-3 py-1.5 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition rounded-md text-xs font-medium whitespace-nowrap"
+                  className="px-3 py-1.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800/80 transition rounded-md text-xs font-medium whitespace-nowrap"
                 >
                   View JSON Popup
                 </button>
