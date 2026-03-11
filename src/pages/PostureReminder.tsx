@@ -20,8 +20,9 @@ export default function PostureReminder() {
   const [badPostureConsecutiveFrames, setBadPostureConsecutiveFrames] = useState(0);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const requestRef = useRef<number>();
+  const lastDetectionRef = useRef<number>(0);
 
-  const BAD_POSTURE_THRESHOLD = 30; // ~1 second at 30fps
+  const BAD_POSTURE_THRESHOLD = 6; // About 3 seconds at 2fps
 
   // Initialize model
   useEffect(() => {
@@ -52,6 +53,14 @@ export default function PostureReminder() {
       requestRef.current = requestAnimationFrame(detectPose);
       return;
     }
+
+    // Throttle to 2 FPS to dramatically reduce system lag
+    const now = Date.now();
+    if (now - lastDetectionRef.current < 500) { // 500ms = 2 FPS
+      requestRef.current = requestAnimationFrame(detectPose);
+      return;
+    }
+    lastDetectionRef.current = now;
 
     try {
       const poses = await model.estimatePoses(video);
@@ -177,7 +186,7 @@ export default function PostureReminder() {
                  ref={webcamRef}
                  audio={false}
                  className="w-full h-full object-cover"
-                 videoConstraints={{ facingMode: "user" }}
+                 videoConstraints={{ facingMode: "user", width: 320, height: 240 }}
                  mirrored={true}
                />
                {!isDetecting && (

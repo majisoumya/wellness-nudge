@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from './use-auth';
 import { getActiveSession } from '@/lib/api';
 import { toast } from 'sonner';
+import { playVoiceAlert } from '@/lib/voice-alerts';
 
 export function useWellnessTracker() {
   const { user } = useAuth();
@@ -50,6 +51,7 @@ export function useWellnessTracker() {
           hasTriggered120Min.current = true;
           hasTriggered25Min.current = true; // suppress the 25min one if it's already 2 hours
           
+          playVoiceAlert("Long screen time alert. It's been two hours. Please take a 10 minute break to stretch your body and drink some water.");
           toast("Long screen time alert!", {
             description: "It's been 2 hours continuously. Take a proper 5-10 minute break to walk around and give your eyes a rest.",
             duration: 15000, // stay mostly visible
@@ -60,6 +62,7 @@ export function useWellnessTracker() {
         else if (elapsedMinutes >= 25 && elapsedMinutes < 120 && !hasTriggered25Min.current) {
           hasTriggered25Min.current = true;
           
+          playVoiceAlert("Focus time complete. Time for a quick micro-break. Look away from the screen, take a deep breath, or listen to a refreshing song.");
           toast("Time for a micro-break!", {
             description: "You've been focusing for 25 minutes. Look 20 feet away for 20 seconds, or do a quick neck stretch!",
             duration: 10000,

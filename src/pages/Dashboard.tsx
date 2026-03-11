@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import FloatingOrbs from "@/components/FloatingOrbs";
@@ -12,6 +12,11 @@ import { useAuth } from '@/hooks/use-auth';
 import { fetchDashboardData, startWorkSession, endWorkSession, logBreak, getActiveSession, getRecentBreaks, WorkSession } from '@/lib/api';
 import { generateWellnessSuggestion, WellnessSuggestion } from '@/lib/ai-suggestions';
 import { toast } from "sonner";
+import Webcam from "react-webcam";
+import * as tf from "@tensorflow/tfjs-core";
+import "@tensorflow/tfjs-backend-webgl";
+import * as poseDetection from "@tensorflow-models/pose-detection";
+import { playVoiceAlert } from "@/lib/voice-alerts";
 
 const tips = [
   "Stretch your shoulders and neck",
@@ -47,6 +52,81 @@ const Dashboard = () => {
   const [weeklyData, setWeeklyData] = useState<{day: string, hours: number}[]>([]);
   const [activeSession, setActiveSession] = useState<WorkSession | null>(null);
   const [aiSuggestion, setAiSuggestion] = useState<WellnessSuggestion | null>(null);
+
+  // Background Face Detection State
+  const webcamRef = useRef<Webcam>(null);
+  const [model, setModel] = useState<poseDetection.PoseDetector | null>(null);
+  const detachedRef = useRef<number>(0); // Timestamp when face was last seen
+  const alertPlayedRef = useRef<boolean>(false);
+  const checkIntervalRef = useRef<any>(null);
+
+  // Load MoveNet model once
+  useEffect(() => {
+    async function initModel() {
+      try {
+        await tf.ready();
+        const detectorConfig = { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING };
+        const detector = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, detectorConfig);
+        setModel(detector);
+      } catch (err) {
+        console.error("Failed to load MoveNet model for background detection", err);
+      }
+    }
+    initModel();
+  }, []);
+
+  // Background face detection loop (runs only when a session is active)
+  useEffect(() => {
+    if (!activeSession || !model) {
+      if (checkIntervalRef.current) clearInterval(checkIntervalRef.current);
+      return;
+    }
+
+    detachedRef.current = Date.now(); // Reset timer when session starts
+    alertPlayedRef.current = false;
+
+    const checkFace = async () => {
+      if (!webcamRef.current || !webcamRef.current.video) return;
+      const video = webcamRef.current.video;
+      
+      if (video.readyState !== 4) return;
+
+      try {
+        const poses = await model.estimatePoses(video);
+        let faceDetected = false;
+
+        if (poses.length > 0) {
+          const keypoints = poses[0].keypoints;
+          const nose = keypoints.find((k) => k.name === "nose");
+          const leftEye = keypoints.find((k) => k.name === "left_eye");
+          const rightEye = keypoints.find((k) => k.name === "right_eye");
+
+          if ((nose?.score && nose.score > 0.3) && (leftEye?.score && leftEye.score > 0.3 || rightEye?.score && rightEye.score > 0.3)) {
+             faceDetected = true;
+          }
+        }
+
+        if (faceDetected) {
+          detachedRef.current = Date.now(); // Reset the detach timer
+          alertPlayedRef.current = false;
+        } else {
+          // Check if detached for more than 15 seconds
+          if (Date.now() - detachedRef.current > 15000 && !alertPlayedRef.current) {
+             alertPlayedRef.current = true;
+             playVoiceAlert("Focus reminder. I cannot see you at the screen. Please return to your focus session.");
+             toast.warning("Focus Interrupted", { description: "We couldn't detect your face. Don't lose your focus flow!" });
+          }
+        }
+      } catch (e) {
+        console.warn("Background detection error", e);
+      }
+    };
+
+    // Run extremely slowly to save performance (1 check every 2 seconds)
+    checkIntervalRef.current = setInterval(checkFace, 2000);
+
+    return () => clearInterval(checkIntervalRef.current);
+  }, [activeSession, model]);
 
   const loadDashboard = async () => {
     if (!user) return;
@@ -143,6 +223,17 @@ const Dashboard = () => {
       <FloatingOrbs />
       <div className="relative z-10 container mx-auto py-6">
         <AppNav />
+
+        {/* Hidden internal camera used only during focus sessions for detachment tracking */}
+        {activeSession && (
+          <div className="absolute top-0 left-0 w-10 h-10 opacity-0 pointer-events-none overflow-hidden -z-10">
+            <Webcam
+               ref={webcamRef}
+               audio={false}
+               videoConstraints={{ facingMode: "user", width: 160, height: 120 }} // ultra low res
+            />
+          </div>
+        )}
 
         <motion.div
           initial={{ opacity: 0 }}
